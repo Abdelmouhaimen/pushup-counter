@@ -19,6 +19,7 @@ const recordBtn    = document.getElementById("record-btn");
 const resetBtn     = document.getElementById("reset-btn");
 const saveBtn      = document.getElementById("save-btn");
 const statusEl     = document.getElementById("status");
+const cameraSelect = document.getElementById("camera-select");
 
 // ── Pose landmark indices ───────────────────────────────────
 const L_SHOULDER = 11;
@@ -29,7 +30,7 @@ const R_ELBOW    = 14;
 const R_WRIST    = 16;
 
 // ── Thresholds ──────────────────────────────────────────────
-const DOWN_ANGLE = 90;   // elbow angle < this → "down"
+const DOWN_ANGLE = 100;  // elbow angle < this → "down"
 const UP_ANGLE   = 130;  // elbow angle > this → "up" (count++)
 
 // ── State ───────────────────────────────────────────────────
@@ -109,15 +110,24 @@ async function initPoseLandmarker() {
     }
 }
 
-// ═════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 //  Webcam – starts on page load, stays on
-// ═════════════════════════════════════════════════════════════
-async function startWebcam() {
+// ═════════════════════════════════════════════════════════════════
+async function startWebcam(deviceId) {
+    // Stop previous stream if switching cameras
+    if (webcamStream) {
+        webcamStream.getTracks().forEach((t) => t.stop());
+    }
+
     try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user" },  // native resolution
-            audio: false,
-        });
+        const constraints = { audio: false };
+        if (deviceId) {
+            constraints.video = { deviceId: { exact: deviceId } };
+        } else {
+            constraints.video = { facingMode: "user" };
+        }
+
+        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = webcamStream;
 
         await new Promise((resolve) => {
@@ -133,6 +143,36 @@ async function startWebcam() {
         statusEl.classList.add("error");
     }
 }
+
+// ═════════════════════════════════════════════════════════════════
+//  Camera enumeration
+// ═════════════════════════════════════════════════════════════════
+async function populateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((d) => d.kind === "videoinput");
+
+    cameraSelect.innerHTML = "";
+    cameras.forEach((cam, i) => {
+        const opt   = document.createElement("option");
+        opt.value   = cam.deviceId;
+        opt.text    = cam.label || `Camera ${i + 1}`;
+        cameraSelect.appendChild(opt);
+    });
+
+    // Pre-select the currently active camera
+    if (webcamStream) {
+        const activeTrack = webcamStream.getVideoTracks()[0];
+        const activeId    = activeTrack?.getSettings().deviceId;
+        if (activeId) cameraSelect.value = activeId;
+    }
+}
+
+cameraSelect.addEventListener("change", async () => {
+    await startWebcam(cameraSelect.value);
+    // Update overlay canvas size to new camera resolution
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+});
 
 // ═════════════════════════════════════════════════════════════
 //  MediaRecorder helpers
@@ -378,9 +418,11 @@ saveBtn.addEventListener("click", () => {
 // ═════════════════════════════════════════════════════════════
 //  Boot sequence – webcam + AI model load in parallel
 // ═════════════════════════════════════════════════════════════
-Promise.all([startWebcam(), initPoseLandmarker()]).then(() => {
+Promise.all([startWebcam(), initPoseLandmarker()]).then(async () => {
     if (poseLandmarker && webcamStream) {
         poseReady = true;
+        // Populate camera dropdown (labels available after getUserMedia grant)
+        await populateCameras();
         // Start continuous pose detection loop (skeleton always visible)
         animFrameId = requestAnimationFrame(detect);
         console.log("Webcam and PoseLandmarker ready — pose detection running.");
