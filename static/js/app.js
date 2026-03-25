@@ -31,8 +31,8 @@ const R_ELBOW    = 14;
 const R_WRIST    = 16;
 
 // ── Thresholds ──────────────────────────────────────────────
-const DOWN_ANGLE = 100;  // elbow angle < this → "down"
-const UP_ANGLE   = 130;  // elbow angle > this → "up" (count++)
+const DOWN_ANGLE = 120;  // elbow angle < this → "down"
+const UP_ANGLE   = 150;  // elbow angle > this → "up" (count++)
 
 // ── State ───────────────────────────────────────────────────
 let poseLandmarker   = null;
