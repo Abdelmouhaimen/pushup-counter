@@ -12,6 +12,7 @@ import {
 const video        = document.getElementById("webcam");
 const canvas       = document.getElementById("overlay");
 const ctx          = canvas.getContext("2d");
+const videoContainer = document.getElementById("video-container");
 const repCountEl   = document.getElementById("rep-count");
 const angleValueEl = document.getElementById("angle-value");
 const stateBadge   = document.getElementById("state-badge");
@@ -69,12 +70,12 @@ const CLR_DOWN = "#ff3366";
 //  Angle calculation  (3-D world landmarks → degrees)
 // ═════════════════════════════════════════════════════════════
 function angleBetween(a, b, c) {
-    const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-    const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+    const ba = { x: a.x - b.x, y: a.y - b.y };
+    const bc = { x: c.x - b.x, y: c.y - b.y };
 
-    const dot   = ba.x * bc.x + ba.y * bc.y + ba.z * bc.z;
-    const magBA = Math.hypot(ba.x, ba.y, ba.z);
-    const magBC = Math.hypot(bc.x, bc.y, bc.z);
+    const dot   = ba.x * bc.x + ba.y * bc.y;
+    const magBA = Math.hypot(ba.x, ba.y);
+    const magBC = Math.hypot(bc.x, bc.y);
 
     if (magBA === 0 || magBC === 0) return 180;
 
@@ -132,6 +133,7 @@ async function startWebcam(deviceId) {
 
         await new Promise((resolve) => {
             video.onloadedmetadata = () => {
+                videoContainer.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
                 canvas.width  = video.videoWidth;
                 canvas.height = video.videoHeight;
                 resolve();
@@ -228,9 +230,6 @@ function drawSkeleton(landmarks) {
     const h = canvas.height;
 
     ctx.save();
-    // mirror to match the CSS-mirrored video
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
 
     // Lines
     ctx.strokeStyle = color;
@@ -287,13 +286,12 @@ function detect(timestamp) {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (results.worldLandmarks && results.worldLandmarks.length > 0) {
-            const world  = results.worldLandmarks[0];
+        if (results.landmarks && results.landmarks.length > 0) {
             const screen = results.landmarks[0];
 
             // ─── Elbow angles (3-D) ─────────────────────────
-            const leftAngle  = angleBetween(world[L_SHOULDER], world[L_ELBOW], world[L_WRIST]);
-            const rightAngle = angleBetween(world[R_SHOULDER], world[R_ELBOW], world[R_WRIST]);
+            const leftAngle  = angleBetween(screen[L_SHOULDER], screen[L_ELBOW], screen[L_WRIST]);
+            const rightAngle = angleBetween(screen[R_SHOULDER], screen[R_ELBOW], screen[R_WRIST]);
             const avg        = (leftAngle + rightAngle) / 2;
 
             // update HUD
