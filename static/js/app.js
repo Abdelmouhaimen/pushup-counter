@@ -299,18 +299,21 @@ function detect(timestamp) {
             // update HUD
             angleValueEl.textContent = `${Math.round(avg)}°`;
 
-            // ─── State machine (only count during recording) ─
-            if (isRecording) {
-                if (!isDown && avg < DOWN_ANGLE) {
-                    isDown = true;
-                    stateBadge.textContent = "DOWN";
-                    stateBadge.classList.add("down");
-                } else if (isDown && avg > UP_ANGLE) {
-                    isDown = false;
+            // ─── State machine ──────────────────────────────
+            // Track UP/DOWN always (visual feedback)
+            // Only count reps during recording
+            if (!isDown && avg < DOWN_ANGLE) {
+                isDown = true;
+                stateBadge.textContent = "DOWN";
+                stateBadge.classList.add("down");
+            } else if (isDown && avg > UP_ANGLE) {
+                isDown = false;
+                stateBadge.textContent = "UP";
+                stateBadge.classList.remove("down");
+
+                if (isRecording) {
                     repCount += 1;
                     repCountEl.textContent = repCount;
-                    stateBadge.textContent = "UP";
-                    stateBadge.classList.remove("down");
 
                     // pulse animation
                     repCountEl.classList.remove("pulse");
