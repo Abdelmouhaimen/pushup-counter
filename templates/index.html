@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diamond Pushup Counter</title>
+    <meta name="description" content="AI-powered diamond pushup repetition counter using real-time pose detection.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app">
+        <!-- Video + overlay -->
+        <div class="video-container" id="video-container">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+
+            <!-- Rep counter overlay -->
+            <div class="counter-overlay">
+                <span id="rep-count">0</span>
+                <span class="counter-label">REPS</span>
+            </div>
+
+            <!-- Live angle readout -->
+            <div class="angle-display" id="angle-display">
+                <span class="angle-icon">&#9699;</span>
+                <span id="angle-value">--°</span>
+            </div>
+
+            <!-- State badge (UP / DOWN) -->
+            <div class="state-badge" id="state-badge">UP</div>
+
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button id="reset-btn" class="btn btn-reset" title="Reset counter">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 105.64-11.36L1 10"/>
+                </svg>
+                Reset
+            </button>
+
+            <button id="record-btn" class="btn btn-record" title="Start / Stop">
+                <span class="record-dot"></span>
+            </button>
+
+            <button id="save-btn" class="btn btn-save hidden" title="Save recording">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Save
+            </button>
+        </div>
+
+        <!-- Status line -->
+        <p id="status" class="status">Loading AI model&hellip;</p>
+    </div>
+
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

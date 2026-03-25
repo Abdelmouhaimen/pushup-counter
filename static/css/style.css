@@ -1,0 +1,314 @@
+/* ============================================================
+   Diamond Pushup Counter – Styles
+   ============================================================ */
+
+/* --- Reset & base --- */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --clr-bg: #06060c;
+    --clr-surface: rgba(255, 255, 255, 0.05);
+    --clr-border: rgba(255, 255, 255, 0.1);
+    --clr-text: #ffffff;
+    --clr-text-muted: rgba(255, 255, 255, 0.45);
+    --clr-accent: #00ff88;
+    --clr-accent-alt: #00ccff;
+    --clr-record: #ff3366;
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--clr-bg);
+    color: var(--clr-text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* --- App shell --- */
+.app {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 16px;
+}
+
+/* --- Video container --- */
+.video-container {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 2px solid var(--clr-border);
+    background: #0d0d14;
+    box-shadow:
+        0 0 80px rgba(0, 255, 136, 0.06),
+        0 4px 40px rgba(0, 0, 0, 0.5);
+}
+
+#webcam,
+#overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(-1);          /* mirror for selfie view */
+}
+
+#webcam {
+    object-fit: cover;
+    background: #111;
+}
+
+/* --- Utility --- */
+.hidden {
+    display: none !important;
+}
+
+/* --- Counter overlay (top-center) --- */
+.counter-overlay {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 32px 10px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--clr-border);
+    z-index: 10;
+    user-select: none;
+}
+
+#rep-count {
+    font-size: 64px;
+    font-weight: 900;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--clr-accent), var(--clr-accent-alt));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: transform 0.15s ease;
+}
+
+#rep-count.pulse {
+    animation: count-pulse 0.3s ease;
+}
+
+@keyframes count-pulse {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.25); }
+    100% { transform: scale(1); }
+}
+
+.counter-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--clr-text-muted);
+    margin-top: 2px;
+}
+
+/* --- Angle readout (bottom-right) --- */
+.angle-display {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--clr-border);
+    z-index: 10;
+    user-select: none;
+}
+
+.angle-icon {
+    font-size: 14px;
+    color: var(--clr-text-muted);
+}
+
+#angle-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* --- State badge (bottom-left) --- */
+.state-badge {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--clr-accent);
+    border: 1px solid rgba(0, 255, 136, 0.25);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    z-index: 10;
+    user-select: none;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.state-badge.down {
+    background: rgba(255, 51, 102, 0.15);
+    color: var(--clr-record);
+    border-color: rgba(255, 51, 102, 0.3);
+}
+
+/* --- Controls --- */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    z-index: 10;
+}
+
+.btn {
+    cursor: pointer;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    transition: all 0.25s ease;
+}
+
+/* Record button */
+.btn-record {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--clr-surface);
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.btn-record:hover {
+    border-color: rgba(255, 51, 102, 0.7);
+    background: rgba(255, 51, 102, 0.08);
+}
+
+.record-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--clr-record);
+    transition: all 0.25s ease;
+}
+
+.btn-record.active .record-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+}
+
+.btn-record.active {
+    border-color: var(--clr-record);
+    box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4);
+    animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.45); }
+    70%  { box-shadow: 0 0 0 14px rgba(255, 51, 102, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0); }
+}
+
+/* Reset button */
+.btn-reset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: var(--radius-md);
+    background: var(--clr-surface);
+    color: var(--clr-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border: 1px solid var(--clr-border);
+}
+
+.btn-reset:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--clr-text);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Save button */
+.btn-save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: var(--radius-md);
+    background: rgba(0, 255, 136, 0.1);
+    color: var(--clr-accent);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border: 1px solid rgba(0, 255, 136, 0.25);
+}
+
+.btn-save:hover {
+    background: rgba(0, 255, 136, 0.2);
+    border-color: rgba(0, 255, 136, 0.4);
+}
+
+/* --- Status --- */
+.status {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--clr-text-muted);
+    z-index: 10;
+    text-align: center;
+    transition: color 0.3s;
+}
+
+.status.ready {
+    color: var(--clr-accent);
+}
+
+.status.error {
+    color: var(--clr-record);
+}

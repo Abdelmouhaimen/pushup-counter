@@ -1,0 +1,351 @@
+/* ============================================================
+   Diamond Pushup Counter – Client-side logic
+   Uses MediaPipe Tasks Vision (Pose Landmarker) in the browser.
+   ============================================================ */
+
+import {
+    PoseLandmarker,
+    FilesetResolver,
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+// ── DOM refs ────────────────────────────────────────────────
+const video        = document.getElementById("webcam");
+const canvas       = document.getElementById("overlay");
+const ctx          = canvas.getContext("2d");
+const repCountEl   = document.getElementById("rep-count");
+const angleValueEl = document.getElementById("angle-value");
+const stateBadge   = document.getElementById("state-badge");
+const recordBtn    = document.getElementById("record-btn");
+const resetBtn     = document.getElementById("reset-btn");
+const saveBtn      = document.getElementById("save-btn");
+const statusEl     = document.getElementById("status");
+
+// ── Pose landmark indices ───────────────────────────────────
+const L_SHOULDER = 11;
+const L_ELBOW    = 13;
+const L_WRIST    = 15;
+const R_SHOULDER = 12;
+const R_ELBOW    = 14;
+const R_WRIST    = 16;
+
+// ── Thresholds ──────────────────────────────────────────────
+const DOWN_ANGLE = 90;   // elbow angle < this → "down"
+const UP_ANGLE   = 150;  // elbow angle > this → "up" (count++)
+
+// ── State ───────────────────────────────────────────────────
+let poseLandmarker   = null;
+let webcamStream     = null;   // always-on camera stream
+let poseReady        = false;  // both webcam + model loaded
+let isRecording      = false;  // video recording + rep counting active
+let animFrameId      = null;
+let repCount         = 0;
+let isDown           = false;
+let lastVideoTime    = -1;
+
+// ── MediaRecorder state ─────────────────────────────────────
+let mediaRecorder    = null;
+let recordedChunks   = [];
+let savedBlobUrl     = null;   // URL for the last recorded video
+
+// ── Skeleton drawing config ─────────────────────────────────
+const ARM_CONNECTIONS = [
+    [L_SHOULDER, L_ELBOW],
+    [L_ELBOW,    L_WRIST],
+    [R_SHOULDER, R_ELBOW],
+    [R_ELBOW,    R_WRIST],
+];
+const JOINT_INDICES = [L_SHOULDER, L_ELBOW, L_WRIST, R_SHOULDER, R_ELBOW, R_WRIST];
+
+// Colors
+const CLR_UP   = "#00ff88";
+const CLR_DOWN = "#ff3366";
+
+// ═════════════════════════════════════════════════════════════
+//  Angle calculation  (3-D world landmarks → degrees)
+// ═════════════════════════════════════════════════════════════
+function angleBetween(a, b, c) {
+    const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+    const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+
+    const dot   = ba.x * bc.x + ba.y * bc.y + ba.z * bc.z;
+    const magBA = Math.hypot(ba.x, ba.y, ba.z);
+    const magBC = Math.hypot(bc.x, bc.y, bc.z);
+
+    if (magBA === 0 || magBC === 0) return 180;
+
+    const cosAngle = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
+    return Math.acos(cosAngle) * (180 / Math.PI);
+}
+
+// ═════════════════════════════════════════════════════════════
+//  MediaPipe initialisation  (runs once on page load)
+// ═════════════════════════════════════════════════════════════
+async function initPoseLandmarker() {
+    try {
+        const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+        );
+
+        poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath:
+                    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+                delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numPoses: 1,
+        });
+
+        statusEl.textContent = "Ready — press record to start";
+        statusEl.classList.add("ready");
+    } catch (err) {
+        console.error("Failed to load PoseLandmarker:", err);
+        statusEl.textContent = "Error loading AI model. Check console.";
+        statusEl.classList.add("error");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+//  Webcam – starts on page load, stays on
+// ═════════════════════════════════════════════════════════════
+async function startWebcam() {
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+            audio: false,
+        });
+        video.srcObject = webcamStream;
+
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+                canvas.width  = video.videoWidth;
+                canvas.height = video.videoHeight;
+                resolve();
+            };
+        });
+    } catch (err) {
+        console.error("Webcam error:", err);
+        statusEl.textContent = `Webcam error: ${err.message}`;
+        statusEl.classList.add("error");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+//  MediaRecorder helpers
+// ═════════════════════════════════════════════════════════════
+function startMediaRecorder() {
+    // Revoke previous blob URL if any
+    if (savedBlobUrl) {
+        URL.revokeObjectURL(savedBlobUrl);
+        savedBlobUrl = null;
+    }
+    recordedChunks = [];
+
+    // Choose a supported MIME type
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+
+    mediaRecorder = new MediaRecorder(webcamStream, { mimeType });
+
+    mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: mimeType });
+        savedBlobUrl = URL.createObjectURL(blob);
+        // Show save button
+        saveBtn.classList.remove("hidden");
+    };
+
+    mediaRecorder.start();
+}
+
+function stopMediaRecorder() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+//  Skeleton drawing (minimal – just the arms)
+// ═════════════════════════════════════════════════════════════
+function drawSkeleton(landmarks) {
+    const color = isDown ? CLR_DOWN : CLR_UP;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.save();
+    // mirror to match the CSS-mirrored video
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+
+    // Lines
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 4;
+    ctx.lineCap     = "round";
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 10;
+
+    for (const [i, j] of ARM_CONNECTIONS) {
+        const a = landmarks[i];
+        const b = landmarks[j];
+        ctx.beginPath();
+        ctx.moveTo(a.x * w, a.y * h);
+        ctx.lineTo(b.x * w, b.y * h);
+        ctx.stroke();
+    }
+
+    // Joints
+    ctx.shadowBlur = 0;
+    for (const idx of JOINT_INDICES) {
+        const lm = landmarks[idx];
+        const x  = lm.x * w;
+        const y  = lm.y * h;
+
+        // outer glow ring
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = color + "33";
+        ctx.fill();
+
+        // solid center
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fillStyle   = color;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth   = 2;
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// ═════════════════════════════════════════════════════════════
+//  Main detection loop
+// ═════════════════════════════════════════════════════════════
+function detect(timestamp) {
+    if (!poseReady) return;
+
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && timestamp !== lastVideoTime) {
+        lastVideoTime = timestamp;
+
+        const results = poseLandmarker.detectForVideo(video, performance.now());
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.worldLandmarks && results.worldLandmarks.length > 0) {
+            const world  = results.worldLandmarks[0];
+            const screen = results.landmarks[0];
+
+            // ─── Elbow angles (3-D) ─────────────────────────
+            const leftAngle  = angleBetween(world[L_SHOULDER], world[L_ELBOW], world[L_WRIST]);
+            const rightAngle = angleBetween(world[R_SHOULDER], world[R_ELBOW], world[R_WRIST]);
+            const avg        = (leftAngle + rightAngle) / 2;
+
+            // update HUD
+            angleValueEl.textContent = `${Math.round(avg)}°`;
+
+            // ─── State machine (only count during recording) ─
+            if (isRecording) {
+                if (!isDown && avg < DOWN_ANGLE) {
+                    isDown = true;
+                    stateBadge.textContent = "DOWN";
+                    stateBadge.classList.add("down");
+                } else if (isDown && avg > UP_ANGLE) {
+                    isDown = false;
+                    repCount += 1;
+                    repCountEl.textContent = repCount;
+                    stateBadge.textContent = "UP";
+                    stateBadge.classList.remove("down");
+
+                    // pulse animation
+                    repCountEl.classList.remove("pulse");
+                    void repCountEl.offsetWidth;
+                    repCountEl.classList.add("pulse");
+                }
+            }
+
+            // draw arm skeleton onto canvas
+            drawSkeleton(screen);
+        }
+    }
+
+    animFrameId = requestAnimationFrame(detect);
+}
+
+// ═════════════════════════════════════════════════════════════
+//  Button handlers
+// ═════════════════════════════════════════════════════════════
+recordBtn.addEventListener("click", () => {
+    if (!isRecording) {
+        // ── START RECORDING ──
+        if (!poseReady) {
+            statusEl.textContent = "Still loading — please wait…";
+            return;
+        }
+
+        // Hide save button from any previous recording
+        saveBtn.classList.add("hidden");
+
+        isRecording = true;
+        isDown      = false;
+        recordBtn.classList.add("active");
+        statusEl.textContent = "Recording — tracking active";
+        statusEl.classList.remove("ready", "error");
+
+        // Start video recording (raw webcam only, no skeleton)
+        startMediaRecorder();
+    } else {
+        // ── STOP RECORDING ──
+        isRecording = false;
+
+        // Stop video recording (triggers onstop → shows save btn)
+        stopMediaRecorder();
+
+        recordBtn.classList.remove("active");
+        stateBadge.textContent = "UP";
+        stateBadge.classList.remove("down");
+        statusEl.textContent = "Stopped — save your recording or record again";
+        statusEl.classList.remove("ready");
+    }
+});
+
+resetBtn.addEventListener("click", () => {
+    repCount = 0;
+    isDown   = false;
+    repCountEl.textContent = "0";
+    stateBadge.textContent = "UP";
+    stateBadge.classList.remove("down");
+    statusEl.textContent = isRecording
+        ? "Counter reset — tracking active"
+        : "Counter reset — press record to start";
+});
+
+saveBtn.addEventListener("click", () => {
+    if (!savedBlobUrl) return;
+
+    const a = document.createElement("a");
+    a.href     = savedBlobUrl;
+    a.download = `pushups_${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    statusEl.textContent = "Video saved!";
+    statusEl.classList.add("ready");
+});
+
+// ═════════════════════════════════════════════════════════════
+//  Boot sequence – webcam + AI model load in parallel
+// ═════════════════════════════════════════════════════════════
+Promise.all([startWebcam(), initPoseLandmarker()]).then(() => {
+    if (poseLandmarker && webcamStream) {
+        poseReady = true;
+        // Start continuous pose detection loop (skeleton always visible)
+        animFrameId = requestAnimationFrame(detect);
+        console.log("Webcam and PoseLandmarker ready — pose detection running.");
+    }
+});
