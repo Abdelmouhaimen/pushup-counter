@@ -30,7 +30,7 @@ const R_WRIST    = 16;
 
 // ── Thresholds ──────────────────────────────────────────────
 const DOWN_ANGLE = 90;   // elbow angle < this → "down"
-const UP_ANGLE   = 150;  // elbow angle > this → "up" (count++)
+const UP_ANGLE   = 130;  // elbow angle > this → "up" (count++)
 
 // ── State ───────────────────────────────────────────────────
 let poseLandmarker   = null;
@@ -46,6 +46,10 @@ let lastVideoTime    = -1;
 let mediaRecorder    = null;
 let recordedChunks   = [];
 let savedBlobUrl     = null;   // URL for the last recorded video
+
+// ── Offscreen recording canvas (video + rep count, no skeleton) ──
+const recCanvas = document.createElement("canvas");
+const recCtx    = recCanvas.getContext("2d");
 
 // ── Skeleton drawing config ─────────────────────────────────
 const ARM_CONNECTIONS = [
@@ -111,7 +115,7 @@ async function initPoseLandmarker() {
 async function startWebcam() {
     try {
         webcamStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+            video: { facingMode: "user" },  // native resolution
             audio: false,
         });
         video.srcObject = webcamStream;
@@ -141,12 +145,19 @@ function startMediaRecorder() {
     }
     recordedChunks = [];
 
+    // Size the offscreen canvas to match the webcam
+    recCanvas.width  = video.videoWidth;
+    recCanvas.height = video.videoHeight;
+
+    // Capture the composited canvas stream (video + rep count)
+    const recStream = recCanvas.captureStream(30);
+
     // Choose a supported MIME type
     const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
         ? "video/webm;codecs=vp9"
         : "video/webm";
 
-    mediaRecorder = new MediaRecorder(webcamStream, { mimeType });
+    mediaRecorder = new MediaRecorder(recStream, { mimeType });
 
     mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) recordedChunks.push(e.data);
@@ -268,8 +279,34 @@ function detect(timestamp) {
                 }
             }
 
-            // draw arm skeleton onto canvas
+            // draw arm skeleton onto screen canvas (not recorded)
             drawSkeleton(screen);
+
+            // ─── Composite recording frame (video + rep count) ──
+            if (isRecording) {
+                const rw = recCanvas.width;
+                const rh = recCanvas.height;
+                recCtx.save();
+                // mirror video so recording matches the selfie view
+                recCtx.translate(rw, 0);
+                recCtx.scale(-1, 1);
+                recCtx.drawImage(video, 0, 0, rw, rh);
+                recCtx.restore();
+
+                // Rep count – top-right corner
+                const fontSize = Math.round(rh * 0.07);
+                recCtx.font = `900 ${fontSize}px Inter, system-ui, sans-serif`;
+                recCtx.textAlign    = "right";
+                recCtx.textBaseline = "top";
+                // shadow for legibility
+                recCtx.shadowColor   = "rgba(0,0,0,0.7)";
+                recCtx.shadowBlur    = 8;
+                recCtx.shadowOffsetX = 2;
+                recCtx.shadowOffsetY = 2;
+                recCtx.fillStyle = "#00ff88";
+                recCtx.fillText(repCount.toString(), rw - 24, 24);
+                recCtx.shadowBlur = 0;
+            }
         }
     }
 
